@@ -4,7 +4,6 @@ import csv
 import subprocess
 import argparse
 import sys
-import glob
 from reportlab.lib.pagesizes import letter
 from reportlab.lib import colors
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -17,6 +16,7 @@ SETUP_FEE = 10.00
 TAX_RATE = 0.07  # 7% sales tax
 CHARGE_TAX = True
 COUNTER_FILE = os.path.join(BASE_DIR, "invoice_counter.txt")
+CUSTOMERS_FILE = os.path.join(BASE_DIR, "customers.txt")
 NAS_TARGET = "harty@100.108.30.62:~/HartyPrints_Backups/"
 
 MATERIALS = {
@@ -70,33 +70,63 @@ def format_phone_number(raw):
         return f"({digits[:3]}){digits[3:6]}-{digits[6:]}"
     return raw
 
-def lookup_customer_history(name_query):
-    records_base = os.path.join(BASE_DIR, "Invoices_Records")
-    csv_files = glob.glob(os.path.join(records_base, "**", "Tax_Ledger_*.csv"), recursive=True)
-    if not csv_files or not name_query.strip():
+def load_address_book():
+    customers = {}
+    if not os.path.exists(CUSTOMERS_FILE):
+        # Create initial template file
+        with open(CUSTOMERS_FILE, 'w', encoding='utf-8') as f:
+            f.write("# Harty Prints Customer Database\n")
+            f.write("# Format: Customer Name | Email | Phone\n")
+            f.write("# You can edit this file manually anytime.\n\n")
+        return customers
+    
+    try:
+        with open(CUSTOMERS_FILE, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#'):
+                    continue
+                parts = [p.strip() for p in line.split('|')]
+                if len(parts) >= 3:
+                    name, email, phone = parts[0], parts[1], parts[2]
+                    customers[name.lower()] = {"name": name, "email": email, "phone": phone}
+    except Exception as e:
+        print(f"[Warning] Could not read customers.txt: {e}")
+    return customers
+
+def save_customer_to_address_book(name, email, phone):
+    if not name or name == "Valued Customer":
+        return
+    
+    customers = load_address_book()
+    customers[name.lower()] = {"name": name, "email": email, "phone": phone}
+    
+    try:
+        with open(CUSTOMERS_FILE, 'w', encoding='utf-8') as f:
+            f.write("# Harty Prints Customer Database\n")
+            f.write("# Format: Customer Name | Email | Phone\n\n")
+            for key in sorted(customers.keys()):
+                c = customers[key]
+                f.write(f"{c['name']} | {c['email']} | {c['phone']}\n")
+    except Exception as e:
+        print(f"[Warning] Could not save customer to database: {e}")
+
+def lookup_customer(name_query):
+    if not name_query.strip():
         return None
+    customers = load_address_book()
+    query_lower = name_query.lower()
     
-    best_match = None
-    latest_timestamp = ""
-    query_parts = name_query.lower().split()
+    # Exact match first
+    if query_lower in customers:
+        return customers[query_lower]
     
-    for file_path in csv_files:
-        try:
-            with open(file_path, mode='r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    cust = row.get("Customer", "")
-                    cust_lower = cust.lower()
-                    # Check if any part of the name matches (e.g. first or last name)
-                    matched = any(part in cust_lower for part in query_parts)
-                    if matched:
-                        ts = row.get("Timestamp", "")
-                        if ts >= latest_timestamp:
-                            latest_timestamp = ts
-                            best_match = (row.get("Email", "N/A"), row.get("Phone", "N/A"), cust)
-        except Exception:
-            continue
-    return best_match
+    # Partial match
+    for key, data in customers.items():
+        if query_lower in key or key in query_lower:
+            return data
+            
+    return None
 
 def get_positive_float(prompt):
     while True:
@@ -292,12 +322,12 @@ def generate_pdf_invoice(invoice_data, pdf_path):
     doc.build(story)
 
 def sync_to_nas():
-    print("\n[Sync] Backing up records and customer shortcuts to NAS (100.108.30.62)...")
+    print("\n[Sync] Backing up records and customer database to NAS (100.108.30.62)...")
     records_dir = os.path.join(BASE_DIR, "Invoices_Records")
     os.makedirs(records_dir, exist_ok=True)
     try:
         result = subprocess.run(
-            ["rsync", "-avz", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=5", "--timeout=5", records_dir + "/", NAS_TARGET],
+            ["rsync", "-avz", "-e", "ssh -o BatchMode=yes -o ConnectTimeout=5", "--timeout=5", CUSTOMERS_FILE, records_dir + "/", NAS_TARGET],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True
@@ -346,18 +376,19 @@ def main():
             customer_email = "N/A"
             customer_phone = "N/A"
         else:
-            match = lookup_customer_history(customer_name)
+            match = lookup_customer(customer_name)
             if match:
-                prev_email, prev_phone, matched_name = match
-                print(f"   [Auto-filled from previous record: {matched_name}]")
-                customer_email = prev_email
-                customer_phone = prev_phone
+                customer_email = match['email']
+                customer_phone = match['phone']
+                print(f"   [Auto-filled from customers.txt database: {match['name']}]")
                 print(f"   - Email: {customer_email}")
                 print(f"   - Phone: {customer_phone}")
             else:
                 customer_email = input("Customer Email (optional): ").strip() or "N/A"
                 raw_phone = input("Customer Phone [e.g. 9125550199]: ").strip()
                 customer_phone = format_phone_number(raw_phone)
+                # Save new customer to the text database for future invoices
+                save_customer_to_address_book(customer_name, customer_email, customer_phone)
         
         print("\nSelect Payment Terms:\n[1] Paid in Full\n[2] Installments\n[3] Unpaid / Pending")
         payment_status_choice = get_validated_choice("Payment Terms Choice (1-3): ", PAYMENT_TERMS)
@@ -406,18 +437,14 @@ def main():
         notes = input("Custom job notes / instructions (optional): ").strip()
     else:
         customer_name = args.name
-        if not args.email or not args.phone:
-            match = lookup_customer_history(customer_name)
-            if match:
-                prev_email, prev_phone, _ = match
-                customer_email = args.email if args.email else prev_email
-                customer_phone = args.phone if args.phone else prev_phone
-            else:
-                customer_email = args.email if args.email else "N/A"
-                customer_phone = args.phone if args.phone else "N/A"
+        match = lookup_customer(customer_name)
+        if match:
+            customer_email = args.email if args.email else match['email']
+            customer_phone = args.phone if args.phone else match['phone']
         else:
-            customer_email = args.email
-            customer_phone = format_phone_number(args.phone)
+            customer_email = args.email if args.email else "N/A"
+            customer_phone = format_phone_number(args.phone) if args.phone else "N/A"
+            save_customer_to_address_book(customer_name, customer_email, customer_phone)
             
         payment_status_str = PAYMENT_TERMS.get(args.status, "Paid in Full")
         paid_today = args.paid_today if payment_status_str == "Installments" else 0.0
