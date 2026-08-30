@@ -1,0 +1,4 @@
+Invoices_Records/
+invoice_counter.txt
+__pycache__/
+*.pyc
