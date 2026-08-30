@@ -27,14 +27,14 @@ MATERIALS = {
     "6": {"name": "TPU (Flexible)", "price_per_g": 0.15},
     "7": {"name": "Nylon / Carbon Fiber Nylon", "price_per_g": 0.25},
     "8": {"name": "Polycarbonate (PC)", "price_per_g": 0.22},
-    "9": {"name": "Customer Supplied", "price_per_g": 0.00},
+    "9": {"name": "Customer Supplied", "price_per_g": 0.00}
 }
 
 LASER_TIERS = {
     "1": {"name": "None", "price": 0.00},
     "2": {"name": "Quick Text / Logo Engraving", "price": 20.00},
-    "3": {"name": "Flat Surface Plate Engraving", "price": 25.00},
-    "4": {"name": "Cylinder / Rotary Drinkware Wrap", "price": 30.00}
+    "3": {"name": "Detailed Surface / Panel Engraving", "price": 45.00},
+    "4": {"name": "Rotary / Drinkware Engraving", "price": 30.00}
 }
 
 CAD_TIERS = {
@@ -127,17 +127,17 @@ def generate_pdf_invoice(invoice_data, pdf_path):
     ]
     
     if invoice_data['grams'] > 0 or invoice_data['material_name'] != "None":
-        abrasive_tag = f" (+${invoice_data['abrasive_surcharge_per_g']}/g abrasive surcharge)" if invoice_data['is_abrasive'] else ""
+        abrasive_tag = f" (+${invoice_data['abrasive_surcharge_per_g']:.2f}/g abrasive surcharge)" if invoice_data['is_abrasive'] else ""
         table_data.append([
             Paragraph(f"Material: {invoice_data['material_name']}{abrasive_tag}", cell_style),
-            Paragraph(f"{invoice_data['grams']}g @ ${invoice_data['effective_mat_price']}/g", cell_style),
+            Paragraph(f"{invoice_data['grams']}g @ ${invoice_data['effective_mat_price']:.2f}/g", cell_style),
             Paragraph(f"${invoice_data['mat_cost']:.2f}", cell_style)
         ])
         
     if invoice_data['hours'] > 0:
         table_data.append([
             Paragraph("Machine Print Time", cell_style),
-            Paragraph(f"{invoice_data['hours']} hrs @ ${invoice_data['machine_rate']}/hr", cell_style),
+            Paragraph(f"{invoice_data['hours']} hrs @ ${invoice_data['machine_rate']:.2f}/hr", cell_style),
             Paragraph(f"${invoice_data['machine_cost']:.2f}", cell_style)
         ])
         
@@ -230,7 +230,7 @@ def main():
         if not customer_name:
             customer_name = "Valued Customer"
             
-        customer_email = input("Customer Email (optional): ").strip() or "N/A"
+        customer_email = input("Customer Email: ").strip() or "N/A"
         
         print("\nSelect Payment Terms:\n[1] Paid in Full\n[2] Installments\n[3] Unpaid / Pending")
         payment_status_str = get_validated_choice("Payment Terms Choice (1-3): ", PAYMENT_TERMS)
@@ -239,11 +239,11 @@ def main():
         
         print("\nSelect Material:")
         for key, val in MATERIALS.items():
-            price_str = f"${val['price_per_g']}/g" if val['price_per_g'] > 0 else "Free / Client Supplied"
+            price_str = f"${val['price_per_g']:.2f}/g" if val['price_per_g'] > 0 else "Free / Client Supplied"
             print(f"[{key}] {val['name']} ({price_str})")
         material = get_validated_choice("Material Choice (1-9): ", MATERIALS)
         
-        grams = get_positive_float("Estimated weight in grams (0 if N/A): ")
+        grams = get_positive_float("Estimated weight in grams: ")
         
         is_abrasive = False
         abrasive_surcharge_per_g = 0.03  # $0.03 per gram wear surcharge for abrasive fills
@@ -253,7 +253,7 @@ def main():
                 is_abrasive = True
                 print(f"  -> Abrasive per-gram surcharge applied (+${abrasive_surcharge_per_g:.2f}/g).")
 
-        hours = get_positive_float("Estimated print time in hours (0 if N/A): ")
+        hours = get_positive_float("Estimated print time in hours: ")
         
         print("\nSelect Laser Engraving / Etching Option:")
         for key, val in LASER_TIERS.items():
