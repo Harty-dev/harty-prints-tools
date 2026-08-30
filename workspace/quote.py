@@ -251,7 +251,7 @@ def main():
             abr_input = input("Is this print run abrasive (Carbon Fiber, Glow-in-the-dark, Glass-filled)? [y/n]: ").strip().lower()
             if abr_input == 'y':
                 is_abrasive = True
-                abrasive_surcharge_per_g = 0.05
+                abrasive_surcharge_per_g = 0.02
                 print(f"  -> Abrasive per-gram surcharge applied (+${abrasive_surcharge_per_g:.2f}/g for nozzle wear).")
 
         hours = get_positive_float("Estimated print time in hours: ")
@@ -278,7 +278,7 @@ def main():
         material = MATERIALS[args.material]
         grams = args.grams
         is_abrasive = args.abrasive
-        abrasive_surcharge_per_g = 0.05 if is_abrasive else 0.0
+        abrasive_surcharge_per_g = 0.02 if is_abrasive else 0.0
         hours = args.hours
         laser_tier = LASER_TIERS[args.laser]
         cad_tier = CAD_TIERS[args.cad]
