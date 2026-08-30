@@ -70,6 +70,30 @@ def format_phone_number(raw):
         return f"({digits[:3]}){digits[3:6]}-{digits[6:]}"
     return raw
 
+def lookup_customer_history(name_query):
+    records_base = os.path.join(BASE_DIR, "Invoices_Records")
+    csv_files = glob.glob(os.path.join(records_base, "**", "Tax_Ledger_*.csv"), recursive=True)
+    if not csv_files:
+        return None
+    
+    best_match = None
+    latest_timestamp = ""
+    
+    for file_path in csv_files:
+        try:
+            with open(file_path, mode='r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    cust = row.get("Customer", "")
+                    if name_query.lower() in cust.lower():
+                        ts = row.get("Timestamp", "")
+                        if ts >= latest_timestamp:
+                            latest_timestamp = ts
+                            best_match = (row.get("Email", "N/A"), row.get("Phone", "N/A"), cust)
+        except Exception:
+            continue
+    return best_match
+
 def get_positive_float(prompt):
     while True:
         try:
@@ -285,8 +309,8 @@ def main():
     parser = argparse.ArgumentParser(description="Harty Prints Terminal Quoting & Invoice System")
     parser.add_argument("--search", type=str, help="Search past customer invoices across quarterly records")
     parser.add_argument("-n", "--name", type=str, help="Customer Name")
-    parser.add_argument("-e", "--email", type=str, default="N/A", help="Customer Email")
-    parser.add_argument("-p", "--phone", type=str, default="N/A", help="Customer Phone Number")
+    parser.add_argument("-e", "--email", type=str, default="", help="Customer Email")
+    parser.add_argument("-p", "--phone", type=str, default="", help="Customer Phone Number")
     parser.add_argument("-s", "--status", type=str, choices=list(PAYMENT_TERMS.keys()), default="1", help="Payment Terms Choice (1-3)")
     parser.add_argument("--paid-today", type=float, default=0.0, help="Amount paid today if installments")
     parser.add_argument("--installments-total", type=int, default=1, help="Total number of installments")
@@ -315,10 +339,27 @@ def main():
         customer_name = input("Customer Name: ").strip()
         if not customer_name:
             customer_name = "Valued Customer"
-            
-        customer_email = input("Customer Email (optional): ").strip() or "N/A"
-        raw_phone = input("Customer Phone [e.g. 9125550199]: ").strip()
-        customer_phone = format_phone_number(raw_phone)
+            customer_email = "N/A"
+            customer_phone = "N/A"
+        else:
+            match = lookup_customer_history(customer_name)
+            if match:
+                prev_email, prev_phone, matched_name = match
+                print(f"   [Found previous record for '{matched_name}']")
+                print(f"   - Email: {prev_email}")
+                print(f"   - Phone: {prev_phone}")
+                use_saved = input("   Auto-fill this customer info? ([Y]/n): ").strip().lower()
+                if use_saved != 'n':
+                    customer_email = prev_email
+                    customer_phone = prev_phone
+                else:
+                    customer_email = input(f"Customer Email [{prev_email}]: ").strip() or prev_email
+                    raw_phone = input(f"Customer Phone [{prev_phone}]: ").strip()
+                    customer_phone = format_phone_number(raw_phone) if raw_phone else prev_phone
+            else:
+                customer_email = input("Customer Email (optional): ").strip() or "N/A"
+                raw_phone = input("Customer Phone [e.g. 9125550199]: ").strip()
+                customer_phone = format_phone_number(raw_phone)
         
         print("\nSelect Payment Terms:\n[1] Paid in Full\n[2] Installments\n[3] Unpaid / Pending")
         payment_status_choice = get_validated_choice("Payment Terms Choice (1-3): ", PAYMENT_TERMS)
@@ -367,8 +408,19 @@ def main():
         notes = input("Custom job notes / instructions (optional): ").strip()
     else:
         customer_name = args.name
-        customer_email = args.email
-        customer_phone = format_phone_number(args.phone)
+        if not args.email or not args.phone:
+            match = lookup_customer_history(customer_name)
+            if match:
+                prev_email, prev_phone, _ = match
+                customer_email = args.email if args.email else prev_email
+                customer_phone = args.phone if args.phone else prev_phone
+            else:
+                customer_email = args.email if args.email else "N/A"
+                customer_phone = args.phone if args.phone else "N/A"
+        else:
+            customer_email = args.email
+            customer_phone = format_phone_number(args.phone)
+            
         payment_status_str = PAYMENT_TERMS.get(args.status, "Paid in Full")
         paid_today = args.paid_today if payment_status_str == "Installments" else 0.0
         total_installments = args.installments_total if payment_status_str == "Installments" else 1
