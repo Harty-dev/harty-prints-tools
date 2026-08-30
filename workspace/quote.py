@@ -246,12 +246,13 @@ def main():
         grams = get_positive_float("Estimated weight in grams: ")
         
         is_abrasive = False
-        abrasive_surcharge_per_g = 0.03  # $0.03 per gram wear surcharge for abrasive fills
+        abrasive_surcharge_per_g = 0.00
         if grams > 0:
-            abr_input = input("Is this print run abrasive (Carbon Fiber, Glow-in-the-dark, Glass-filled)? (y/N): ").strip().lower()
+            abr_input = input("Is this print run abrasive (Carbon Fiber, Glow-in-the-dark, Glass-filled)? [y/n]: ").strip().lower()
             if abr_input == 'y':
                 is_abrasive = True
-                print(f"  -> Abrasive per-gram surcharge applied (+${abrasive_surcharge_per_g:.2f}/g).")
+                abrasive_surcharge_per_g = 0.05
+                print(f"  -> Abrasive per-gram surcharge applied (+${abrasive_surcharge_per_g:.2f}/g for nozzle wear).")
 
         hours = get_positive_float("Estimated print time in hours: ")
         
@@ -277,13 +278,13 @@ def main():
         material = MATERIALS[args.material]
         grams = args.grams
         is_abrasive = args.abrasive
-        abrasive_surcharge_per_g = 0.03 if is_abrasive else 0.0
+        abrasive_surcharge_per_g = 0.05 if is_abrasive else 0.0
         hours = args.hours
         laser_tier = LASER_TIERS[args.laser]
         cad_tier = CAD_TIERS[args.cad]
         scan_tier = SCAN_TIERS[args.scan]
     
-    effective_mat_price = material["price_per_g"] + (abrasive_surcharge_per_g if is_abrasive else 0.0)
+    effective_mat_price = material["price_per_g"] + abrasive_surcharge_per_g
     material_cost = round(grams * effective_mat_price, 2)
     machine_cost = round(hours * MACHINE_RATE_PER_HOUR, 2)
     
@@ -338,7 +339,7 @@ def main():
         'grams': grams,
         'effective_mat_price': effective_mat_price,
         'is_abrasive': is_abrasive,
-        'abrasive_surcharge_per_g': abrasive_surcharge_per_g if is_abrasive else 0.0,
+        'abrasive_surcharge_per_g': abrasive_surcharge_per_g,
         'mat_cost': material_cost,
         'hours': hours,
         'machine_rate': MACHINE_RATE_PER_HOUR,
