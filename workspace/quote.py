@@ -73,11 +73,12 @@ def format_phone_number(raw):
 def lookup_customer_history(name_query):
     records_base = os.path.join(BASE_DIR, "Invoices_Records")
     csv_files = glob.glob(os.path.join(records_base, "**", "Tax_Ledger_*.csv"), recursive=True)
-    if not csv_files:
+    if not csv_files or not name_query.strip():
         return None
     
     best_match = None
     latest_timestamp = ""
+    query_parts = name_query.lower().split()
     
     for file_path in csv_files:
         try:
@@ -85,7 +86,10 @@ def lookup_customer_history(name_query):
                 reader = csv.DictReader(f)
                 for row in reader:
                     cust = row.get("Customer", "")
-                    if name_query.lower() in cust.lower():
+                    cust_lower = cust.lower()
+                    # Check if any part of the name matches (e.g. first or last name)
+                    matched = any(part in cust_lower for part in query_parts)
+                    if matched:
                         ts = row.get("Timestamp", "")
                         if ts >= latest_timestamp:
                             latest_timestamp = ts
@@ -345,17 +349,11 @@ def main():
             match = lookup_customer_history(customer_name)
             if match:
                 prev_email, prev_phone, matched_name = match
-                print(f"   [Found previous record for '{matched_name}']")
-                print(f"   - Email: {prev_email}")
-                print(f"   - Phone: {prev_phone}")
-                use_saved = input("   Auto-fill this customer info? ([Y]/n): ").strip().lower()
-                if use_saved != 'n':
-                    customer_email = prev_email
-                    customer_phone = prev_phone
-                else:
-                    customer_email = input(f"Customer Email [{prev_email}]: ").strip() or prev_email
-                    raw_phone = input(f"Customer Phone [{prev_phone}]: ").strip()
-                    customer_phone = format_phone_number(raw_phone) if raw_phone else prev_phone
+                print(f"   [Auto-filled from previous record: {matched_name}]")
+                customer_email = prev_email
+                customer_phone = prev_phone
+                print(f"   - Email: {customer_email}")
+                print(f"   - Phone: {customer_phone}")
             else:
                 customer_email = input("Customer Email (optional): ").strip() or "N/A"
                 raw_phone = input("Customer Phone [e.g. 9125550199]: ").strip()
